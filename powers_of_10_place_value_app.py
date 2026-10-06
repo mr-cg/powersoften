@@ -44,7 +44,7 @@ def main():
     payload = json.dumps(dict(raw=raw, power=power, negative=negative, result=result))
     components.html(HTML.replace('__DATA__', payload), height=690, scrolling=True)
     st.info('The decimal point marks the boundary between ones and tenths. For ×10ⁿ, each digit moves n columns left when n is positive, or |n| columns right when n is negative.')
-    st.caption('Hover over a digit or a column for its place value. Blue digits come from the starting number; gray zeros are placeholders. Scroll wide charts horizontally. Negative signs describe the whole number and do not occupy a place-value column.')
+    st.caption('Hover over a digit or a column for its place value. Faded dotted marks show the starting decimal position or number; gray zeros are placeholders added to write the result. Scroll wide charts horizontally. Negative signs describe the whole number and do not occupy a place-value column.')
 
 
 def superscript(n):
@@ -53,6 +53,11 @@ def superscript(n):
 
 HTML = r'''<!doctype html><html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box}body{margin:0;color:#17243b;font-family:system-ui,sans-serif;background:#fff}button{background:#17243b;color:white;border:0;border-radius:8px;padding:10px 16px;cursor:pointer}button.secondary{background:#eef2f7;color:#17243b}.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 16px}input{flex:1;min-width:150px;accent-color:#176bba}.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{min-width:0;border:1px solid #dce3ec;border-radius:16px;padding:20px}h2{font-size:20px;margin:0 0 8px}.sub{font-size:14px;color:#536276;min-height:64px;line-height:1.5}.scroll{overflow-x:auto;background:#f5f8fc;border-radius:10px;padding:12px 0}.stage{position:relative;height:215px}.cell{position:absolute;top:10px;width:64px;height:160px;border-left:1px solid #d5dce6;text-align:center}.label{font-size:11px;padding:8px 3px;height:70px;color:#536276}.token{position:absolute;top:99px;width:64px;text-align:center;font:700 32px ui-monospace,monospace;color:#176bba;cursor:help}.zero{color:#98a4b4}.boundary{position:absolute;top:77px;height:80px;border-left:3px solid #c13e51}.dot{position:absolute;top:100px;width:20px;font:800 32px ui-monospace,monospace;color:#c13e51;text-align:center}.note{font-size:14px;line-height:1.5;margin-top:14px}.equation{font-weight:700;margin-top:14px}.badge{font-size:13px;background:#eef2f7;border-radius:6px;padding:5px 8px}#tip{position:fixed;z-index:20;pointer-events:none;background:#17243b;color:white;padding:9px 12px;border-radius:8px;font-size:13px;max-width:280px;display:none}@media(max-width:700px){.cards{grid-template-columns:1fr}.sub{min-height:0;margin-bottom:15px}}
+.ghost{z-index:0;color:#176bba;opacity:.24;text-decoration:underline;text-decoration-style:dotted;text-decoration-color:#176bba;text-underline-offset:5px;pointer-events:none}
+#digits .label{height:40px}
+#digits .ghost{top:61px}
+.dot-origin{top:77px;height:80px;width:1px;border-left:2px dotted #c13e51;opacity:.38;pointer-events:none}
+.dot-origin-mark{top:100px;color:#c13e51;opacity:.32;pointer-events:none}
 </style></head><body>
 <div class="toolbar"><button id="play">▶ Animate both</button><button class="secondary" id="reset">↺ Reset</button><label for="progress">Progress</label><input id="progress" type="range" min="0" max="1" step="0.001" value="0"><span id="status" class="badge">Starting number</span></div>
 <div class="cards"><section class="card"><h2>1 · Moving decimal point</h2><div class="sub">The digits stay in the same positions on the screen. The point moves through them, changing how we read their places.</div><div class="scroll"><div id="point" class="stage"></div></div><div class="note" id="pointNote"></div><div class="equation" id="pointRead"></div></section>
@@ -76,9 +81,11 @@ for(let e=hi;e>=lo;e--){
 }
 const fixed=element(grid,'boundary');fixed.style.left=(x(0)+W)+'px';fixed.title='Fixed boundary between ones and tenths';
 const dotFixed=element(grid,'dot','.');dotFixed.style.left=(x(0)+W-10)+'px';dotFixed.dataset.tip='Fixed decimal point: ones | tenths';
+const dotOrigin=element(point,'dot-origin');dotOrigin.style.left=(x(0)+W-1)+'px';dotOrigin.title='Starting decimal position';
+const dotOriginMark=element(point,'dot dot-origin-mark','.');dotOriginMark.style.left=(x(0)+W-10)+'px';dotOriginMark.title='Starting decimal position';
 const dotMoving=element(point,'dot','.');dotMoving.dataset.tip='Decimal point: boundary between ones and tenths';
 const leftTokens=[],rightTokens=[];
-for(const o of original){const a=element(point,'token',o.d),b=element(grid,'token',o.d);a.style.left=x(o.exp)+'px';leftTokens.push({...o,node:a});rightTokens.push({...o,node:b});}
+for(const o of original){const a=element(point,'token',o.d),ghost=element(grid,'token ghost',o.d),b=element(grid,'token',o.d);a.style.left=x(o.exp)+'px';ghost.style.left=b.style.left=x(o.exp)+'px';ghost.dataset.tip='Starting digit '+o.d+' · '+place(o.exp);leftTokens.push({...o,node:a});rightTokens.push({...o,node:b});}
 const zerosA=[],zerosB=[];
 for(let e=hi;e>=lo;e--){const a=element(point,'token zero','0'),b=element(grid,'token zero','0');a.style.left=b.style.left=x(e)+'px';zerosA.push({exp:e,node:a});zerosB.push({exp:e,node:b});}
 function update(v){
@@ -88,6 +95,7 @@ function update(v){
  for(const h of headers){const exp=h.exp+(h.moving?n:0);h.label.textContent=(h.moving&&!settled)?'':place(exp);h.label.parentElement.dataset.tip=(h.moving&&!settled)?'Between places during animation':place(exp)+' · 10^'+exp;}
  for(const o of rightTokens){o.node.style.left=(x(o.exp)-shift*W)+'px';o.node.dataset.tip=settled?'Digit '+o.d+' · '+place(o.exp+n)+' · '+o.d+' × 10^'+(o.exp+n):'Digit '+o.d+' · '+place(o.exp)+' → '+place(o.exp+D.power);}
  for(const o of leftTokens)o.node.dataset.tip=settled?'Digit '+o.d+' · '+place(o.exp+n)+' · '+o.d+' × 10^'+(o.exp+n):'Digit '+o.d+' · '+place(o.exp)+' → '+place(o.exp+D.power);
+ for(const ghost of grid.querySelectorAll('.ghost'))ghost.hidden=t===0;
  const max=Math.max(0,whole.length-1+n),min=Math.min(-1,-frac.length+n);
  for(const o of zerosA){const exp=o.exp+n;const visible=settled&&exp<=max&&exp>=min&&!original.some(d=>d.exp===o.exp);o.node.hidden=!visible;o.node.dataset.tip='Placeholder zero · '+place(exp);}
  for(const o of zerosB){const visible=settled&&o.exp<=max&&o.exp>=min&&!original.some(d=>d.exp+n===o.exp);o.node.hidden=!visible;o.node.dataset.tip='Placeholder zero · '+place(o.exp);}
